@@ -1,9 +1,7 @@
 import sys
 import os
-sys.path.append('..')
 import numpy as np
 from skimage import io
-import tensorflow as tf
 
 NOISE_LEVELS = [15, 25, 35, 45, 55]
 
