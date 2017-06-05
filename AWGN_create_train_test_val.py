@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 from skimage import io
+import glob
 
 NOISE_LEVELS = [15, 25, 35, 45, 55]
 
@@ -103,12 +104,19 @@ def create_AWGN_train_test_val(residual_learning=True):
 
 
 def get_AWGN_train_test_val():
-    train_x = io.imread_collection(data_dir + '/AWGN/train/*x.jpg')
-    train_y = io.imread_collection(data_dir + '/AWGN/train/*y.jpg')
-    val_x = io.imread_collection(data_dir + '/AWGN/val/*x.jpg')
-    val_y = io.imread_collection(data_dir + '/AWGN/val/*y.jpg')
-    test_x = io.imread_collection(data_dir + '/AWGN/test/*x.jpg')
-    test_y = io.imread_collection(data_dir + '/AWGN/test/*y.jpg')
+    train_x_path = sorted(glob.glob(data_dir + '/AWGN/train/*x.jpg'))
+    train_y_path = sorted(glob.glob(data_dir + '/AWGN/train/*y.jpg'))
+    val_x_path = sorted(glob.glob(data_dir + '/AWGN/val/*x.jpg'))
+    val_y_path = sorted(glob.glob(data_dir + '/AWGN/val/*y.jpg'))
+    test_x_path = sorted(glob.glob(data_dir + '/AWGN/test/*x.jpg'))
+    test_y_path = sorted(glob.glob(data_dir + '/AWGN/test/*y.jpg'))
+
+    train_x = io.imread_collection(train_x_path)
+    train_y = io.imread_collection(train_y_path)
+    val_x = io.imread_collection(val_x_path)
+    val_y = io.imread_collection(val_y_path)
+    test_x = io.imread_collection(test_x_path)
+    test_y = io.imread_collection(test_y_path)
 
     train_x = img_collection_to_numpy(train_x)
     train_y = img_collection_to_numpy(train_y)
