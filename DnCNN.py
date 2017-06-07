@@ -67,10 +67,24 @@ def conv2d_with_BN(x, kernel_size, input_channels, output_channels, layer_name, 
     return activations
 
 
+def calculate_PSNR(clean, noisy, denoised):
+    MSE_noisy = np.mean(np.square(noisy-clean))
+    MSE_denoised = np.mean(np.square(denoised-clean))
+
+    PSNR_noisy = 10*np.log10((255**2)/MSE_noisy)
+    PSNR_denoised = 10*np.log10((255**2)/MSE_denoised)
+
+    return PSNR_noisy, PSNR_denoised
+
+
 
 class denoising_autoencoder(object):
     def __init__(self):
         self.seed = np.random.seed(1234)
+        self.save_path = '/home/kenleejr92/Denoising/tmp/DnCNN'
+
+
+    def load_data(self):
         self.train_x, self.train_y, self.val_x, self.val_y, self.test_x, self.test_y = get_AWGN_train_test_val()
 
         self.train_x = self.train_x.astype(dtype='float')
@@ -83,9 +97,6 @@ class denoising_autoencoder(object):
         self.val_y = self.val_y.astype(dtype='float')
 
         self.img_dim = list(self.train_x.shape[1:])
-
-        self.save_path = '/home/kenleejr92/Denoising/tmp/DnCNN'
-
 
     def create_placeholders(self):
         """ 
@@ -137,6 +148,7 @@ class denoising_autoencoder(object):
         """
         Training
         """
+        self.load_data()
         x_, y_ = self.create_placeholders()
         output, MSE, PSNR = self.create_model(x_, y_)
         tf_saver = tf.train.Saver()
@@ -152,7 +164,7 @@ class denoising_autoencoder(object):
             if epoch%5 == 0:
                 print('Step %d' % epoch)
                 tr_feed = {y_: self.train_y[epoch:epoch+batch_size], x_: self.train_x[epoch:epoch+batch_size]}
-                print tf_session.run(MSE, feed_dict = tr_feed)
+                print 'MSE:', tf_session.run(MSE, feed_dict = tr_feed)
                 tf_saver.save(tf_session, self.save_path, global_step=epoch)
                 summary = tf_session.run(merged, feed_dict=tr_feed)
                 train_writer.add_summary(summary, epoch)
@@ -163,44 +175,65 @@ class denoising_autoencoder(object):
 
 
     def inference(self):
+        self.load_data()
         tf_session = tf.Session()
         self.restore_model(tf_session)
-        inf_feed = {'noisy_image:0': self.test_x[10:20]}
+        noisy_images = self.test_x[10:20]
+        true_noise = self.test_y[10:20]
+        inf_feed = {'noisy_image:0': patches}
         residual_noise =  tf_session.run(self.output, feed_dict=inf_feed)
-        clean_images = np.clip(np.squeeze(self.test_x[10:20] - residual_noise), 0, 255).astype(np.uint8)
-        original_img = np.clip(np.squeeze(self.test_x[10:20] - self.test_y[10:20]), 0, 255).astype(np.uint8)
+        denoised_images = np.clip(noisy_images - residual_noise, 0, 255).astype(np.uint8)
+        clean_images = np.clip(noisy_images - true_noise, 0, 255).astype(np.uint8)
+        denoised_images = np.squeeze(denoised_images)
+        print clean_images.shape, noisy_images.shape, denoised_images.shape
         for i in range(10):
-            io.imshow_collection([self.test_x[i+10], clean_images[i], original_img[i]])
+            PSNR_noisy, PSNR_denoised = calculate_PSNR(clean_images[i], noisy_images[i], denoised_images[i])
+            print 'PSNR_noisy:', PSNR_noisy
+            print 'PSNR_denosied:', PSNR_denoised
+            io.imshow_collection([clean_images[i], noisy_images[i], denoised_images[i]])
             io.show()
 
-    def denoise_img(self, image):
+    def denoise_img(self, image_path='/mnt/hdd1/BSR/BSDS500/data/images/test/302022.jpg'):
         tf_session = tf.Session()
         self.restore_model(tf_session)
-        width = image.shape[0]
-        height = image.shape[1]
-        patches = np.zeros((width, height, 3))
-        for h in np.arange(0, height-50, 50):
-            for w in np.arange(0, width-50, 50):
-                patch = np.expand_dims(image[h:h+50, w:w+50, :], axis=0)
-                if patch.shape != (1, 50, 50, 3): continue
-                inf_dict = {'noisy_image:0': patch}
-                patches[h:h+50, w:w+50, :] = patch.astype(np.int16) - np.squeeze(tf_session.run(self.output, feed_dict=inf_dict))
-            
-        return patches
+
+        clean = io.imread(image_path)
+        noise = np.rint(np.random.normal(loc=0.0, scale=15, size=clean.shape))
+        noisy = np.clip(clean.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+        width = noisy.shape[0]
+        height = noisy.shape[1]
+
+        image_pad = np.pad(noisy, ((0, 500-width), (0, 500-height), (0, 0)), mode='reflect')
+        clean_pad = np.pad(clean, ((0, 500-width), (0, 500-height), (0, 0)), mode='reflect')
+
+        patches = image_pad.reshape((100, 50, 50, 3))
+        clean_patches = clean_pad.reshape((100, 50, 50, 3))
+
+        inf_dict = {'noisy_image:0': patches}
+        noise_patches = tf_session.run(self.output, feed_dict=inf_dict)
+        noise_patches = np.squeeze(np.array(noise_patches))
+        noise_img = noise_patches.reshape((500, 500, 3))
         
+        denoised_patches = np.clip(patches.astype(np.int16) - noise_patches, 0, 255).astype(np.uint8)
+        noise_img = noise_img[:width, :height, :]
+        denoised = np.clip(noisy.astype(np.int16) - noise_img, 0, 255).astype(np.uint8)
+
+        PSNR_noisy, PSNR_denoised = calculate_PSNR(clean, noisy, denoised)
+
+        print 'PSNR_noisy:', PSNR_noisy
+        print 'PSNR_denosied:', PSNR_denoised
+        
+        io.imshow_collection([clean, noisy, denoised])
+        io.show()
+            
 
 
 if __name__ == '__main__':
     dae = denoising_autoencoder()
-    # dae.train()
+    #dae.train()
     # dae.inference()
-    clean = io.imread('/mnt/hdd1/BSR/BSDS500/data/images/test/226022.jpg')
-    noise = np.rint(np.random.normal(loc=0.0, scale=55.0, size=clean.shape))
-    noisy = np.clip(clean.astype(np.int16) + noise, 0, 255).astype(np.uint8)
-    denoised = dae.denoise_img(noisy)
-    noisy = np.clip(noisy, 0, 255)
-    denoised = np.rint(np.clip(denoised, 0, 255)).astype(np.uint8)
-    io.imshow_collection([clean, noisy, denoised])
-    io.show()
+    dae.denoise_img()
+    
 
     
