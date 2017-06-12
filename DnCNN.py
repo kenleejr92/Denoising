@@ -43,6 +43,8 @@ def conv2d_with_BN(x, kernel_size, input_channels, output_channels, layer_name, 
     b = bias_variable([output_channels], 'b_' + layer_name)
     o = offset_variable([x.get_shape().as_list()[1], x.get_shape().as_list()[1], output_channels], 'o_' + layer_name)
     s = scale_variable([x.get_shape().as_list()[1], x.get_shape().as_list()[1], output_channels], 's_' + layer_name)
+    activations = None
+    preactivate = None
 
     with tf.name_scope(layer_name):
         with tf.name_scope('weights'):
@@ -108,7 +110,7 @@ class denoising_autoencoder(object):
         return x_, y_
 
 
-    def create_model(self, x_batch, y_batch, num_layers=19):
+    def create_model(self, x_batch, y_batch, num_layers=20):
         """ 
         Build the denoiser
         """
@@ -121,14 +123,14 @@ class denoising_autoencoder(object):
             h_conv = conv2d_with_BN(layer_array[i-1], 3, layer_array[i-1].get_shape().as_list()[3], 64, 'h_conv' + str(i))
             tf.add_to_collection('h_conv' + str(i), h_conv)
             layer_array.append(h_conv)
-        output = conv2d_with_BN(layer_array[-1], 3, layer_array[i-1].get_shape().as_list()[3], 3, 'h_conv' + str(num_layers), BN=False, act=False)
+        output = conv2d_with_BN(layer_array[-1], 3, layer_array[-1].get_shape().as_list()[3], 3, 'h_conv' + str(num_layers-1), BN=False, act=False)
 
         MSE = tf.reduce_mean(tf.square(output - y_batch))
         clean_img_batch = x_batch - y_batch
         MSE2 = tf.reduce_mean(tf.square(output))
         MSE3 = tf.reduce_mean(tf.square(y_batch))
-        PSNR_denoised = 10*tf.log((255**2)/MSE2)
-        PSNR_noise = 10*tf.log((255**2)/MSE3)
+        PSNR_denoised = MSE2
+        PSNR_noise = MSE3
 
         with tf.name_scope('metrics'):
             with tf.name_scope('MSE'):
@@ -175,26 +177,27 @@ class denoising_autoencoder(object):
         for epoch in range(epochs+1):
             if epoch%5 == 0:
                 print('Step %d' % epoch)
-                tr_feed = {y_: self.train_y[epoch:epoch+batch_size], x_: self.train_x[epoch:epoch+batch_size]}
+                tr_feed = {y_: self.train_y[0:200], x_: self.train_x[0:200]}
                 mse_train, psnrn_train, psnrd_train, summary_train = tf_session.run([MSE, PSNR_noise, PSNR_denoised, merged], feed_dict = tr_feed)
                 train_writer.add_summary(summary_train, epoch)
                 print 'MSE_train:', mse_train
-                print 'PSNR_noise_train:', psnrn_train
-                print 'PSNR_denoised_train:', psnrd_train
+                print 'PSNR_noise_train:', 10*np.log10(255.**2/psnrn_train)
+                print 'PSNR_denoised_train:', 10*np.log10(255.**2/psnrd_train)
 
-                val_feed = {y_: self.val_y[epoch:epoch+batch_size], x_: self.val_x[epoch:epoch+batch_size]}
+                val_feed = {y_: self.val_y[0:200], x_: self.val_x[0:200]}
                 mse_val, psnrn_val, psnrd_val, summary_val = tf_session.run([MSE, PSNR_noise, PSNR_denoised, merged], feed_dict = val_feed)
                 val_writer.add_summary(summary_val, epoch)
                 print 'MSE_val:', mse_val
-                print 'PSNR_noise_val:', psnrn_val
-                print 'PSNR_denoised_val:', psnrd_val
+                print 'PSNR_noise_val:', 10*np.log10(255.**2/psnrn_val)
+                print 'PSNR_denoised_val:', 10*np.log10(255.**2/psnrd_val)
 
                 tf_saver.save(tf_session, self.save_path, global_step=epoch)
-                
-                
-            for i in np.arange(0,self.train_x.shape[0],batch_size):
-                tr_feed = {y_: self.train_y[epoch:epoch+batch_size], x_: self.train_x[epoch:epoch+batch_size]}
+
+            for i in np.arange(0, self.train_x.shape[0], batch_size):
+                tr_feed = {y_: self.train_y[i:i + batch_size], x_: self.train_x[i:i + batch_size]}
                 tf_session.run(train_step, feed_dict=tr_feed)
+
+                
 
 
     def inference(self):
@@ -216,7 +219,7 @@ class denoising_autoencoder(object):
             io.imshow_collection([clean_images[i], noisy_images[i], denoised_images[i]])
             io.show()
 
-    def denoise_img(self, noise_level=25, image_path='/mnt/hdd1/BSR/BSDS500/data/images/test/2018.jpg'):
+    def denoise_img(self, noise_level=15, image_path='/mnt/hdd1/BSR/BSDS500/data/images/test/3063.jpg'):
         np.random.seed(1234)
         tf_session = tf.Session()
         self.restore_model(tf_session)
@@ -266,9 +269,9 @@ class denoising_autoencoder(object):
 
 if __name__ == '__main__':
     dae = denoising_autoencoder()
-    dae.train()
+    # dae.train()
     # dae.inference()
-    # dae.denoise_img()
+    dae.denoise_img()
     
 
     
