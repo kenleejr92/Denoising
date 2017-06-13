@@ -57,7 +57,7 @@ def conv2d_with_BN(x, kernel_size, input_channels, output_channels, layer_name, 
         if BN == True and act==True:
             with tf.name_scope('BN_Wx_plus_b'):
                 batch_mean1, batch_var1 = tf.nn.moments(preactivate,[0])
-                BN_preactivate = tf.nn.batch_normalization(preactivate, batch_mean1, batch_var1, o, s, 0.01)
+                BN_preactivate = tf.nn.batch_normalization(preactivate, batch_mean1, batch_var1, o, s, 0.001)
                 tf.summary.histogram('BN_pre_activations', BN_preactivate)
                 activations = tf.nn.relu(BN_preactivate, name='activation')
         elif BN == False and act == True:
@@ -119,13 +119,13 @@ class denoising_autoencoder(object):
         h_conv0 = conv2d_with_BN(input_layer, kernel_size=3, input_channels=3, output_channels=32, layer_name='conv0', BN=False, act=True)
         tf.add_to_collection('h_conv0', h_conv0)
         layer_array = [h_conv0]
-        for i in np.arange(1, num_layers-2):
-            h_conv = conv2d_with_BN(layer_array[i-1], 3, layer_array[i-1].get_shape().as_list()[3], 64, 'h_conv' + str(i))
+        for i in np.arange(1, num_layers-1):
+            h_conv = conv2d_with_BN(layer_array[i-1], 3, layer_array[i-1].get_shape().as_list()[3], 64, 'h_conv' + str(i), BN=True, act=True)
             tf.add_to_collection('h_conv' + str(i), h_conv)
             layer_array.append(h_conv)
         output = conv2d_with_BN(layer_array[-1], 3, layer_array[-1].get_shape().as_list()[3], 3, 'h_conv' + str(num_layers-1), BN=False, act=False)
 
-        MSE = tf.reduce_mean(tf.square(output - y_batch))
+        MSE = 1/2*tf.reduce_mean(tf.square(output - y_batch))
         clean_img_batch = x_batch - y_batch
         MSE2 = tf.reduce_mean(tf.square(output))
         MSE3 = tf.reduce_mean(tf.square(y_batch))
@@ -148,7 +148,7 @@ class denoising_autoencoder(object):
         return output, MSE, PSNR_denoised, PSNR_noise
 
 
-    def restore_model(self, tf_session, global_step=45):
+    def restore_model(self, tf_session, global_step=5):
         new_saver = tf.train.import_meta_graph(self.save_path + '-' + str(global_step) + '.meta')
         new_saver.restore(tf_session, tf.train.latest_checkpoint('/home/kenleejr92/Denoising/tmp/'))
 
@@ -177,7 +177,7 @@ class denoising_autoencoder(object):
         for epoch in range(epochs+1):
             if epoch%5 == 0:
                 print('Step %d' % epoch)
-                tr_feed = {y_: self.train_y[0:200], x_: self.train_x[0:200]}
+                tr_feed = {y_: self.train_y[0:20], x_: self.train_x[0:20]}
                 mse_train, psnrn_train, psnrd_train, summary_train = tf_session.run([MSE, PSNR_noise, PSNR_denoised, merged], feed_dict = tr_feed)
                 train_writer.add_summary(summary_train, epoch)
                 print 'MSE_train:', mse_train
@@ -255,6 +255,7 @@ class denoising_autoencoder(object):
         
 
         noise_img = noise_img[:width, :height, :]
+        clean = (noisy - noise).astype(np.uint8)
         denoised = np.clip(noisy.astype(np.int16) - noise_img, 0, 255).astype(np.uint8)
 
         PSNR_noisy, PSNR_denoised = calculate_PSNR(clean, noisy, denoised)
@@ -269,9 +270,9 @@ class denoising_autoencoder(object):
 
 if __name__ == '__main__':
     dae = denoising_autoencoder()
-    # dae.train()
+    dae.train()
     # dae.inference()
-    dae.denoise_img()
+    # dae.denoise_img()
     
 
     

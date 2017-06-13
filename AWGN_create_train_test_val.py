@@ -58,6 +58,8 @@ def create_AWGN_train_test_val():
     Creates train, val, and test images
     '''
     np.random.seed(1234)
+    num_samples = 800
+    num_images = 500
 
     make_dirs()
 
@@ -69,19 +71,16 @@ def create_AWGN_train_test_val():
     test_arr = [test[i] for i in range(len(test))]
     val_arr = [val[i] for i in range(len(val))]
 
-    train_tensor = np.zeros((20*len(train_arr), 50, 50, 3))
-    test_tensor = np.zeros((20*len(test_arr), 50, 50, 3))
-    val_tensor = np.zeros((20*len(val_arr), 50, 50, 3))
+    train_tensor = np.zeros((num_samples*len(train_arr), 50, 50, 3))
+    test_tensor = np.zeros((num_samples*len(test_arr), 50, 50, 3))
+    val_tensor = np.zeros((num_samples*len(val_arr), 50, 50, 3))
 
     for i, t in enumerate(train_arr):
-        train_tensor[i*20:i*20+20, :, :, :] = sample_from_image(t)
-        # if (i*20)%100 == 0:
-        #     io.imshow(train_tensor[i*20])
-        #     io.show()
+        train_tensor[i*num_samples:i*num_samples+num_samples, :, :, :] = sample_from_image(t, num_samples=num_samples)
     for i, t in enumerate(test_arr):
-        test_tensor[i*20:i*20+20, :, :, :] = sample_from_image(t)
+        test_tensor[i*num_samples:i*num_samples+num_samples, :, :, :] = sample_from_image(t, num_samples=num_samples)
     for i, t in enumerate(val_arr):
-        val_tensor[i*20:i*20+20, :, :, :] = sample_from_image(t)
+        val_tensor[i*num_samples:i*num_samples+num_samples, :, :, :] = sample_from_image(t, num_samples=num_samples)
 
     train_tensor = np.array(train_tensor)
     test_tensor = np.array(test_tensor)
@@ -105,8 +104,7 @@ def create_AWGN_train_test_val():
     clean_tensor = clean_tensor.astype(np.uint8)
     # io.imshow_collection([clean_tensor[5], noisy_tensor[5], np.clip(noisy_tensor[5].astype(np.int16) - noise[5], 0, 255).astype(np.uint8)])
     # io.show()
-
-
+    
     train_x = noisy_tensor[0:8000, :, :, :]
     train_y = noise[0:8000, :, :, :]
 
@@ -181,7 +179,7 @@ if __name__ == '__main__':
     create_AWGN_train_test_val()
     train_x, train_y, train_c, val_x, val_y, val_c, test_x, test_y, test_c = get_AWGN_train_test_val()
     io.imshow_collection([train_c[display], train_x[display], np.clip(train_x[display].astype(np.int16) - train_y[display], 0, 255).astype(np.uint8)])
-    MSE = np.mean(np.square(train_c[display]-train_x[display]))
+    MSE = np.mean(np.square(train_y[display]))
     PSNR = 10*np.log10((255**2)/MSE)
     print(PSNR)
     io.show()
